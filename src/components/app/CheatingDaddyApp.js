@@ -626,6 +626,44 @@ export class CheatingDaddyApp extends LitElement {
                 }
                 return;
             }
+        } else if (providerMode === 'commandcode') {
+            const creds = await cheatingDaddy.storage.getCredentials();
+            if (!creds.commandCodeApiKey || creds.commandCodeApiKey.trim() === '') {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
+
+            const success = await cheatingDaddy.initializeCommandCode(this.selectedProfile);
+            if (!success) {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
+        } else if (providerMode === 'openai') {
+            const prefs = await cheatingDaddy.storage.getPreferences();
+            const baseUrl = prefs.openaiBaseUrl || '';
+            const model = prefs.openaiModel || '';
+            if (!baseUrl.trim() || !model.trim()) {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
+
+            const success = await cheatingDaddy.initializeOpenAi(this.selectedProfile);
+            if (!success) {
+                const mainView = this.shadowRoot.querySelector('main-view');
+                if (mainView && mainView.triggerApiKeyError) {
+                    mainView.triggerApiKeyError();
+                }
+                return;
+            }
         } else {
             const apiKey = await cheatingDaddy.storage.getApiKey();
             if (!apiKey || apiKey === '') {

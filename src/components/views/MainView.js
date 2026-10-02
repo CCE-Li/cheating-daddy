@@ -13,6 +13,15 @@ const LOCAL_LLM_PRESETS = [
     { value: 'unsloth/Qwen3.5-35B-A3B-GGUF:Q4_K_M', label: 'Qwen 3.5 35B-A3B Q4 — 22.92 GB · Largest' },
 ];
 
+const COMMAND_CODE_MODEL_PRESETS = [
+    { value: 'deepseek/deepseek-v4.1-flash', label: 'DeepSeek V4.1 Flash — vision · fast' },
+    { value: 'deepseek/deepseek-v4-flash-vision-exp', label: 'DeepSeek V4 Flash Vision — vision · fast' },
+    { value: 'xiaomi/mimo-v2.6-flash', label: 'MiMo V2.6 Flash — multimodal · cheapest' },
+    { value: 'moonshotai/Kimi-K2.5', label: 'Kimi K2.5 — multimodal' },
+    { value: 'MiniMaxAI/MiniMax-M3', label: 'MiniMax M3 — multimodal' },
+    { value: 'Qwen/Qwen3.8-27B', label: 'Qwen 3.8 27B — vision-language' },
+];
+
 export class MainView extends LitElement {
     static styles = css`
         * {
@@ -709,6 +718,13 @@ export class MainView extends LitElement {
         _useCustomLocalLlmModel: { state: true },
         _whisperModel: { state: true },
         _showLocalHelp: { state: true },
+        // Command Code API state
+        _commandCodeKey: { state: true },
+        _commandCodeModel: { state: true },
+        _useCustomCommandCodeModel: { state: true },
+        // OpenAI-compatible API state
+        _openaiBaseUrl: { state: true },
+        _openaiModel: { state: true },
     };
 
     constructor() {
@@ -737,6 +753,11 @@ export class MainView extends LitElement {
         this._localLlmModel = 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
         this._useCustomLocalLlmModel = false;
         this._whisperModel = 'tiny.en';
+        this._commandCodeKey = '';
+        this._commandCodeModel = 'deepseek/deepseek-v4.1-flash';
+        this._useCustomCommandCodeModel = false;
+        this._openaiBaseUrl = 'https://api.openai.com/v1';
+        this._openaiModel = '';
 
         this._animId = null;
         this._time = 0;
@@ -776,6 +797,15 @@ export class MainView extends LitElement {
             this._localLlmModel = prefs.localLlmModel || 'unsloth/Qwen3.5-4B-GGUF:Q4_K_M';
             this._useCustomLocalLlmModel = !LOCAL_LLM_PRESETS.some(preset => preset.value === this._localLlmModel);
             this._whisperModel = prefs.whisperModel || 'tiny.en';
+
+            // Load Command Code API settings
+            this._commandCodeKey = creds.commandCodeApiKey || '';
+            this._commandCodeModel = prefs.commandCodeModel || 'deepseek/deepseek-v4.1-flash';
+            this._useCustomCommandCodeModel = !COMMAND_CODE_MODEL_PRESETS.some(preset => preset.value === this._commandCodeModel);
+
+            // Load OpenAI-compatible API settings
+            this._openaiBaseUrl = prefs.openaiBaseUrl || 'https://api.openai.com/v1';
+            this._openaiModel = prefs.openaiModel || '';
 
             this.requestUpdate();
         } catch (e) {
@@ -1001,6 +1031,47 @@ export class MainView extends LitElement {
         this.requestUpdate();
     }
 
+    async _saveCommandCodeKey(val) {
+        this._commandCodeKey = val;
+        this._keyError = false;
+        try {
+            const creds = await cheatingDaddy.storage.getCredentials().catch(() => ({}));
+            await cheatingDaddy.storage.setCredentials({ ...creds, commandCodeApiKey: val });
+        } catch (e) {}
+        this.requestUpdate();
+    }
+
+    async _saveCommandCodeModel(val) {
+        this._commandCodeModel = val;
+        await cheatingDaddy.storage.updatePreference('commandCodeModel', val);
+        this.requestUpdate();
+    }
+
+    async _selectCommandCodeModel(value) {
+        if (value === 'custom') {
+            this._useCustomCommandCodeModel = true;
+            this.requestUpdate();
+            return;
+        }
+
+        this._useCustomCommandCodeModel = false;
+        await this._saveCommandCodeModel(value);
+    }
+
+    async _saveOpenaiBaseUrl(val) {
+        this._openaiBaseUrl = val;
+        this._keyError = false;
+        await cheatingDaddy.storage.updatePreference('openaiBaseUrl', val);
+        this.requestUpdate();
+    }
+
+    async _saveOpenaiModel(val) {
+        this._openaiModel = val;
+        this._keyError = false;
+        await cheatingDaddy.storage.updatePreference('openaiModel', val);
+        this.requestUpdate();
+    }
+
     _handleProfileChange(e) {
         this.onProfileChange(e.target.value);
     }
@@ -1030,6 +1101,18 @@ export class MainView extends LitElement {
             }
         } else if (this._mode === 'local') {
             if (!this._localLlmModel.trim()) {
+                return;
+            }
+        } else if (this._mode === 'commandcode') {
+            if (!this._commandCodeKey.trim()) {
+                this._keyError = true;
+                this.requestUpdate();
+                return;
+            }
+        } else if (this._mode === 'openai') {
+            if (!this._openaiBaseUrl.trim() || !this._openaiModel.trim()) {
+                this._keyError = true;
+                this.requestUpdate();
                 return;
             }
         }
@@ -1238,6 +1321,8 @@ export class MainView extends LitElement {
             <!-- Cloud promo intentionally removed from the active UI. -->
 
             <div class="mode-links">
+                <button class="mode-link" @click=${() => this._saveMode('commandcode')}>Use Command Code API</button>
+                <button class="mode-link" @click=${() => this._saveMode('openai')}>Use OpenAI-compatible API</button>
                 <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
             </div>
         `;
@@ -1282,6 +1367,24 @@ export class MainView extends LitElement {
                 </div>
             </details>
 
+            ${this._renderWhisperSection()}
+
+            ${this._renderStartButton()} ${this._renderDivider()}
+
+            <!-- Cloud promo intentionally removed from the active UI. -->
+
+            <div class="mode-links">
+                <button class="mode-link" @click=${() => this._saveMode('commandcode')}>Use Command Code API</button>
+                <button class="mode-link" @click=${() => this._saveMode('openai')}>Use OpenAI-compatible API</button>
+                <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
+            </div>
+        `;
+    }
+
+    // ── Whisper section ──
+
+    _renderWhisperSection() {
+        return html`
             <details class="config-section">
                 <summary class="config-summary">
                     <span class="config-summary-text">
@@ -1305,13 +1408,128 @@ export class MainView extends LitElement {
                     </div>
                 </div>
             </details>
+        `;
+    }
+
+    // ── Command Code API mode ──
+
+    _renderCommandCodeMode() {
+        return html`
+            <details class="config-section">
+                <summary class="config-summary">
+                    <span class="config-summary-text">
+                        <span class="config-summary-title">Command Code API</span>
+                        <span class="config-summary-description">Answers and screen analysis</span>
+                    </span>
+                    ${this._renderConfigChevron()}
+                </summary>
+                <div class="config-content">
+                    <div class="form-group">
+                        <label class="form-label">Command Code API Key</label>
+                        <input
+                            type="password"
+                            placeholder="Required"
+                            .value=${this._commandCodeKey}
+                            @input=${e => this._saveCommandCodeKey(e.target.value)}
+                            class=${this._keyError ? 'error' : ''}
+                        />
+                        <div class="form-hint">
+                            <span class="link" @click=${() => this.onExternalLink('https://commandcode.ai/settings/keys')}>Get Command Code API key</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Model</label>
+                        <select
+                            .value=${this._useCustomCommandCodeModel ? 'custom' : this._commandCodeModel}
+                            @change=${event => this._selectCommandCodeModel(event.target.value)}
+                        >
+                            ${COMMAND_CODE_MODEL_PRESETS.map(preset => html`<option value=${preset.value}>${preset.label}</option>`)}
+                            <option value="custom">Custom model id…</option>
+                        </select>
+                        ${
+                            this._useCustomCommandCodeModel
+                                ? html`
+                                      <input
+                                          type="text"
+                                          placeholder="e.g. deepseek/deepseek-v4.1-flash"
+                                          .value=${this._commandCodeModel}
+                                          @input=${event => this._saveCommandCodeModel(event.target.value)}
+                                      />
+                                  `
+                                : ''
+                        }
+                        <div class="form-hint">Pick a vision-capable model for screen analysis. Speech is transcribed locally with Whisper.</div>
+                    </div>
+                </div>
+            </details>
+
+            ${this._renderWhisperSection()}
 
             ${this._renderStartButton()} ${this._renderDivider()}
 
-            <!-- Cloud promo intentionally removed from the active UI. -->
+            <div class="mode-links">
+                <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
+                <button class="mode-link" @click=${() => this._saveMode('openai')}>Use OpenAI-compatible API</button>
+                <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
+            </div>
+        `;
+    }
+
+    // ── OpenAI-compatible API mode ──
+
+    _renderOpenAiMode() {
+        return html`
+            <details class="config-section">
+                <summary class="config-summary">
+                    <span class="config-summary-text">
+                        <span class="config-summary-title">OpenAI-compatible API</span>
+                        <span class="config-summary-description">Chat Completions endpoint</span>
+                    </span>
+                    ${this._renderConfigChevron()}
+                </summary>
+                <div class="config-content">
+                    <div class="form-group">
+                        <label class="form-label">Base URL</label>
+                        <input
+                            type="text"
+                            placeholder="https://api.openai.com/v1"
+                            .value=${this._openaiBaseUrl}
+                            @input=${e => this._saveOpenaiBaseUrl(e.target.value)}
+                            class=${this._keyError ? 'error' : ''}
+                        />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">API Key</label>
+                        <input type="password" placeholder="Optional" .value=${this._openaiKey} @input=${e => this._saveOpenaiKey(e.target.value)} />
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Model</label>
+                        <input
+                            type="text"
+                            placeholder="e.g. gpt-4o-mini, deepseek-chat, llama3.3:70b"
+                            .value=${this._openaiModel}
+                            @input=${e => this._saveOpenaiModel(e.target.value)}
+                            class=${this._keyError ? 'error' : ''}
+                        />
+                        <div class="form-hint">
+                            Works with OpenAI, DeepSeek, OpenRouter, Ollama, LM Studio and other Chat Completions endpoints. Speech is transcribed locally with
+                            Whisper.
+                        </div>
+                    </div>
+                </div>
+            </details>
+
+            ${this._renderWhisperSection()}
+
+            ${this._renderStartButton()} ${this._renderDivider()}
 
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
+                <button class="mode-link" @click=${() => this._saveMode('commandcode')}>Use Command Code API</button>
+                <button class="mode-link" @click=${() => this._saveMode('local')}>Use local AI</button>
             </div>
         `;
     }
@@ -1339,12 +1557,19 @@ export class MainView extends LitElement {
                                   <button class="help-btn" @click=${this._openLocalHelp} aria-label="Open Local AI help">${helpIcon}</button>
                               </div>
                           `
-                        : html` <div class="page-title">${html`Cheating Daddy <span class="mode-suffix">BYOK</span>`}</div> `
+                        : html`
+                              <div class="page-title">
+                                  Cheating Daddy <span class="mode-suffix">${this._mode === 'commandcode' ? 'Command Code' : this._mode === 'openai' ? 'OpenAI API' : 'BYOK'}</span>
+                              </div>
+                          `
                 }
-                <div class="page-subtitle">${this._mode === 'byok' ? 'Bring your own API keys' : 'Run models locally on your machine'}</div>
+                <div class="page-subtitle">
+                    ${this._mode === 'byok' ? 'Bring your own API keys' : this._mode === 'local' ? 'Run models locally on your machine' : this._mode === 'commandcode' ? 'Answers via the Command Code API' : 'Any OpenAI-compatible endpoint'}
+                </div>
 
                 <!-- Cloud mode render branch intentionally disabled. -->
                 ${this._mode === 'byok' ? this._renderByokMode() : ''} ${this._mode === 'local' ? this._renderLocalMode() : ''}
+                ${this._mode === 'commandcode' ? this._renderCommandCodeMode() : ''} ${this._mode === 'openai' ? this._renderOpenAiMode() : ''}
             </div>
             ${this._mode === 'local' && this._showLocalHelp ? this._renderLocalHelp(closeIcon) : ''}
         `;
