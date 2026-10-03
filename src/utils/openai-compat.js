@@ -19,6 +19,41 @@ function buildChatCompletionsUrl(rootUrl) {
     return `${trimmed}/chat/completions`;
 }
 
+function buildModelsUrl(rootUrl) {
+    const trimmed = rootUrl.trim().replace(/\/+$/, '');
+    if (trimmed.endsWith('/chat/completions')) {
+        return `${trimmed.slice(0, -'/chat/completions'.length)}/models`;
+    }
+    return `${trimmed}/models`;
+}
+
+async function listAvailableModels(config) {
+    const url = buildModelsUrl(config.baseUrl);
+    const headers = {};
+    if (config.apiKey) {
+        headers.Authorization = `Bearer ${config.apiKey}`;
+    }
+
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+        let detail = '';
+        try {
+            const payload = await response.json();
+            detail = payload?.error?.message || '';
+        } catch {
+            // The response body was not JSON.
+        }
+        const statusHint = response.status === 401 ? ' (check the API key)' : '';
+        throw new Error(`${config.label || 'API'} returned HTTP ${response.status}${statusHint}${detail ? `: ${detail}` : ''}`);
+    }
+
+    const payload = await response.json();
+    const entries = Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.models) ? payload.models : [];
+    const models = entries.map(entry => (typeof entry === 'string' ? entry : entry?.id || entry?.name || '')).filter(Boolean);
+    return [...new Set(models)].sort((a, b) => a.localeCompare(b));
+}
+
 function initializeApiClient(config) {
     chatCompletionsUrl = buildChatCompletionsUrl(config.baseUrl);
     apiKey = config.apiKey || null;
@@ -166,4 +201,5 @@ module.exports = {
     closeApiClient,
     sendApiText,
     sendApiImage,
+    listAvailableModels,
 };

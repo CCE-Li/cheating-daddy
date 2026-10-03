@@ -3,7 +3,16 @@ const { BrowserWindow, ipcMain } = require('electron');
 const { spawn } = require('child_process');
 const { saveDebugAudio } = require('../audioUtils');
 const { getSystemPrompt } = require('./prompts');
-const { getAvailableModel, incrementLimitCount, getApiKey, getGroqApiKey, incrementCharUsage, getConfig } = require('../storage');
+const {
+    getAvailableModel,
+    incrementLimitCount,
+    getApiKey,
+    getGroqApiKey,
+    incrementCharUsage,
+    getConfig,
+    getCredentials,
+    getPreferences,
+} = require('../storage');
 const { connectCloud, sendCloudAudio, sendCloudText, sendCloudImage, closeCloud, isCloudActive, setOnTurnComplete } = require('./cloud');
 const { startTransportLog, logTransportEvent, closeTransportLog } = require('./transportLogger');
 
@@ -12,6 +21,13 @@ let _localai = null;
 function getLocalAi() {
     if (!_localai) _localai = require('./localai');
     return _localai;
+}
+
+// Lazy-loaded to avoid circular dependency (openai-compat.js imports from gemini.js)
+let _openaiCompat = null;
+function getOpenAiCompat() {
+    if (!_openaiCompat) _openaiCompat = require('./openai-compat');
+    return _openaiCompat;
 }
 
 // Provider mode: 'byok', 'cloud', 'local', 'commandcode', or 'openai'
@@ -1112,6 +1128,36 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
             currentProviderMode = 'byok';
         }
         return success;
+    });
+
+    ipcMain.handle('list-models', async (event, provider) => {
+        try {
+            const creds = getCredentials();
+            let baseUrl;
+            let apiKey;
+            let label;
+
+            if (provider === 'commandcode') {
+                baseUrl = getLocalAi().COMMAND_CODE_BASE_URL;
+                apiKey = (creds.commandCodeApiKey || '').trim();
+                label = 'Command Code';
+                if (!apiKey) {
+                    return { success: false, error: 'Enter your Command Code API key first.' };
+                }
+            } else {
+                baseUrl = (getPreferences().openaiBaseUrl || '').trim();
+                apiKey = (creds.openaiKey || '').trim();
+                label = 'OpenAI API';
+                if (!baseUrl) {
+                    return { success: false, error: 'Enter a Base URL first.' };
+                }
+            }
+
+            const models = await getOpenAiCompat().listAvailableModels({ baseUrl, apiKey, label });
+            return { success: true, data: models };
+        } catch (error) {
+            return { success: false, error: error.message };
+        }
     });
 
     ipcMain.handle('cancel-local-initialization', async () => {

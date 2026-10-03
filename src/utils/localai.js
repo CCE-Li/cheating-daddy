@@ -728,6 +728,7 @@ async function sendLocalImage(base64Data, prompt) {
 }
 
 module.exports = {
+    COMMAND_CODE_BASE_URL,
     initializeLocalSession,
     initializeCommandCodeSession,
     initializeOpenAiSession,

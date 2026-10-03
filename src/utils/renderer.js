@@ -1127,6 +1127,7 @@ const cheatingDaddy = {
     initializeLocal,
     initializeCommandCode,
     initializeOpenAi,
+    listModels: provider => ipcRenderer.invoke('list-models', provider),
     cancelLocalInitialization,
     startCapture,
     stopCapture,

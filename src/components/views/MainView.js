@@ -289,6 +289,46 @@ export class MainView extends LitElement {
             line-height: var(--line-height);
         }
 
+        .model-row {
+            display: flex;
+            gap: var(--space-sm);
+        }
+
+        .model-row input {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .fetch-models-btn {
+            flex: none;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-elevated);
+            color: var(--text-secondary);
+            font-size: var(--font-size-xs);
+            font-family: var(--font);
+            cursor: pointer;
+            white-space: nowrap;
+            transition:
+                border-color var(--transition),
+                color var(--transition);
+        }
+
+        .fetch-models-btn:hover:not(:disabled) {
+            border-color: var(--text-muted);
+            color: var(--text-primary);
+        }
+
+        .fetch-models-btn:disabled {
+            opacity: 0.6;
+            cursor: default;
+        }
+
+        .model-error {
+            color: var(--danger, #ef4444);
+        }
+
         .form-hint {
             font-size: var(--font-size-xs);
             color: var(--text-muted);
@@ -725,6 +765,10 @@ export class MainView extends LitElement {
         // OpenAI-compatible API state
         _openaiBaseUrl: { state: true },
         _openaiModel: { state: true },
+        // Fetched model list (OpenAI-compatible + Command Code)
+        _availableModels: { state: true },
+        _modelsFetching: { state: true },
+        _modelsError: { state: true },
     };
 
     constructor() {
@@ -758,6 +802,10 @@ export class MainView extends LitElement {
         this._useCustomCommandCodeModel = false;
         this._openaiBaseUrl = 'https://api.openai.com/v1';
         this._openaiModel = '';
+        this._availableModels = [];
+        this._modelsFetching = false;
+        this._modelsError = '';
+        this._modelRequestId = 0;
 
         this._animId = null;
         this._time = 0;
@@ -808,6 +856,7 @@ export class MainView extends LitElement {
             this._openaiModel = prefs.openaiModel || '';
 
             this.requestUpdate();
+            this._maybeAutoFetchModels();
         } catch (e) {
             console.error('Error loading MainView storage:', e);
         }
@@ -948,8 +997,13 @@ export class MainView extends LitElement {
         this._mode = mode;
         this._tokenError = false;
         this._keyError = false;
+        this._modelRequestId += 1;
+        this._availableModels = [];
+        this._modelsFetching = false;
+        this._modelsError = '';
         await cheatingDaddy.storage.updatePreference('providerMode', mode);
         this.requestUpdate();
+        this._maybeAutoFetchModels();
     }
 
     async _saveToken(val) {
@@ -1059,6 +1113,12 @@ export class MainView extends LitElement {
     }
 
     async _saveOpenaiBaseUrl(val) {
+        if (val !== this._openaiBaseUrl) {
+            this._modelRequestId += 1;
+            this._availableModels = [];
+            this._modelsFetching = false;
+            this._modelsError = '';
+        }
         this._openaiBaseUrl = val;
         this._keyError = false;
         await cheatingDaddy.storage.updatePreference('openaiBaseUrl', val);
@@ -1070,6 +1130,55 @@ export class MainView extends LitElement {
         this._keyError = false;
         await cheatingDaddy.storage.updatePreference('openaiModel', val);
         this.requestUpdate();
+    }
+
+    // ── Model discovery ──
+
+    async _fetchAvailableModels() {
+        if (this._modelsFetching) return;
+
+        const provider = this._mode === 'commandcode' ? 'commandcode' : 'openai';
+        const requestId = ++this._modelRequestId;
+        this._modelsFetching = true;
+        this._modelsError = '';
+        this.requestUpdate();
+
+        let result;
+        try {
+            result = await cheatingDaddy.listModels(provider);
+        } catch (e) {
+            result = { success: false, error: e.message };
+        }
+
+        if (requestId !== this._modelRequestId) return;
+
+        if (result.success) {
+            this._availableModels = result.data || [];
+            if (!this._availableModels.length) {
+                this._modelsError = 'The endpoint returned no models.';
+            }
+        } else {
+            this._modelsError = result.error || 'Could not fetch the model list.';
+        }
+
+        this._modelsFetching = false;
+        this.requestUpdate();
+    }
+
+    _maybeAutoFetchModels() {
+        if (this._mode !== 'openai' && this._mode !== 'commandcode') return;
+        if (this._modelsFetching || this._availableModels.length) return;
+
+        const hasCredentials = this._mode === 'commandcode' ? !!this._commandCodeKey.trim() : !!this._openaiKey.trim();
+        if (!hasCredentials) return;
+
+        this._fetchAvailableModels();
+    }
+
+    _pickOpenAiModel(value) {
+        if (value) {
+            this._saveOpenaiModel(value);
+        }
     }
 
     _handleProfileChange(e) {
@@ -1414,6 +1523,7 @@ export class MainView extends LitElement {
     // ── Command Code API mode ──
 
     _renderCommandCodeMode() {
+        const isModelSelected = id => !this._useCustomCommandCodeModel && this._commandCodeModel === id;
         return html`
             <details class="config-section">
                 <summary class="config-summary">
@@ -1431,6 +1541,7 @@ export class MainView extends LitElement {
                             placeholder="Required"
                             .value=${this._commandCodeKey}
                             @input=${e => this._saveCommandCodeKey(e.target.value)}
+                            @change=${() => this._maybeAutoFetchModels()}
                             class=${this._keyError ? 'error' : ''}
                         />
                         <div class="form-hint">
@@ -1440,12 +1551,14 @@ export class MainView extends LitElement {
 
                     <div class="form-group">
                         <label class="form-label">Model</label>
-                        <select
-                            .value=${this._useCustomCommandCodeModel ? 'custom' : this._commandCodeModel}
-                            @change=${event => this._selectCommandCodeModel(event.target.value)}
-                        >
-                            ${COMMAND_CODE_MODEL_PRESETS.map(preset => html`<option value=${preset.value}>${preset.label}</option>`)}
-                            <option value="custom">Custom model id…</option>
+                        <select @change=${event => this._selectCommandCodeModel(event.target.value)}>
+                            ${COMMAND_CODE_MODEL_PRESETS.map(
+                                preset => html`<option value=${preset.value} ?selected=${isModelSelected(preset.value)}>${preset.label}</option>`
+                            )}
+                            ${this._availableModels
+                                .filter(id => !COMMAND_CODE_MODEL_PRESETS.some(preset => preset.value === id))
+                                .map(id => html`<option value=${id} ?selected=${isModelSelected(id)}>${id}</option>`)}
+                            <option value="custom" ?selected=${this._useCustomCommandCodeModel}>Custom model id…</option>
                         </select>
                         ${
                             this._useCustomCommandCodeModel
@@ -1459,6 +1572,13 @@ export class MainView extends LitElement {
                                   `
                                 : ''
                         }
+                        <div class="form-hint">
+                            <span class="link" @click=${() => this._fetchAvailableModels()}>
+                                ${this._modelsFetching ? 'Fetching available models…' : 'Fetch available models'}
+                            </span>
+                            ${this._availableModels.length ? html`<span> · ${this._availableModels.length} found</span>` : ''}
+                        </div>
+                        ${this._modelsError ? html`<div class="form-hint model-error">${this._modelsError}</div>` : ''}
                         <div class="form-hint">Pick a vision-capable model for screen analysis. Speech is transcribed locally with Whisper.</div>
                     </div>
                 </div>
@@ -1496,24 +1616,49 @@ export class MainView extends LitElement {
                             placeholder="https://api.openai.com/v1"
                             .value=${this._openaiBaseUrl}
                             @input=${e => this._saveOpenaiBaseUrl(e.target.value)}
+                            @change=${() => this._maybeAutoFetchModels()}
                             class=${this._keyError ? 'error' : ''}
                         />
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">API Key</label>
-                        <input type="password" placeholder="Optional" .value=${this._openaiKey} @input=${e => this._saveOpenaiKey(e.target.value)} />
+                        <input
+                            type="password"
+                            placeholder="Optional"
+                            .value=${this._openaiKey}
+                            @input=${e => this._saveOpenaiKey(e.target.value)}
+                            @change=${() => this._maybeAutoFetchModels()}
+                        />
                     </div>
 
                     <div class="form-group">
                         <label class="form-label">Model</label>
-                        <input
-                            type="text"
-                            placeholder="e.g. gpt-4o-mini, deepseek-chat, llama3.3:70b"
-                            .value=${this._openaiModel}
-                            @input=${e => this._saveOpenaiModel(e.target.value)}
-                            class=${this._keyError ? 'error' : ''}
-                        />
+                        <div class="model-row">
+                            <input
+                                type="text"
+                                placeholder="e.g. gpt-4o-mini, deepseek-chat, llama3.3:70b"
+                                .value=${this._openaiModel}
+                                @input=${e => this._saveOpenaiModel(e.target.value)}
+                                class=${this._keyError ? 'error' : ''}
+                            />
+                            <button class="fetch-models-btn" @click=${() => this._fetchAvailableModels()} ?disabled=${this._modelsFetching}>
+                                ${this._modelsFetching ? 'Fetching…' : 'Fetch models'}
+                            </button>
+                        </div>
+                        ${
+                            this._availableModels.length
+                                ? html`
+                                      <select @change=${e => this._pickOpenAiModel(e.target.value)}>
+                                          <option value="" ?selected=${!this._availableModels.includes(this._openaiModel)}>Choose a fetched model…</option>
+                                          ${this._availableModels.map(
+                                              id => html`<option value=${id} ?selected=${id === this._openaiModel}>${id}</option>`
+                                          )}
+                                      </select>
+                                  `
+                                : ''
+                        }
+                        ${this._modelsError ? html`<div class="form-hint model-error">${this._modelsError}</div>` : ''}
                         <div class="form-hint">
                             Works with OpenAI, DeepSeek, OpenRouter, Ollama, LM Studio and other Chat Completions endpoints. Speech is transcribed locally with
                             Whisper.
