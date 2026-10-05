@@ -563,7 +563,7 @@ async function initializeApiSession(apiConfig, model, whisperModel, profile, cus
         sendToRenderer('session-initializing', false);
         sendToRenderer('update-status', `${label} ready - Listening...`);
         console.log(`[LocalAI] ${label} session initialized successfully`);
-        return true;
+        return { success: true };
     } catch (error) {
         const wasCancelled = error.name === 'AbortError' || initializationController?.signal.aborted;
         if (wasCancelled) {
@@ -575,7 +575,7 @@ async function initializeApiSession(apiConfig, model, whisperModel, profile, cus
         sendToRenderer('local-ai-download-progress', { active: false });
         sendToRenderer('session-initializing', false);
         sendToRenderer('update-status', wasCancelled ? 'Local AI download cancelled' : `${label} error: ` + error.message);
-        return false;
+        return { success: false, error: wasCancelled ? '' : error.message };
     }
 }
 
@@ -583,7 +583,7 @@ async function initializeCommandCodeSession(commandCodeApiKey, model, whisperMod
     if (!commandCodeApiKey || !commandCodeApiKey.trim()) {
         console.error('[LocalAI] Initialization error: Command Code API key is required');
         sendToRenderer('update-status', 'Command Code error: Command Code API key is required');
-        return false;
+        return { success: false, error: 'Command Code API key is required' };
     }
 
     return initializeApiSession(

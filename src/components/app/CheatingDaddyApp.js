@@ -631,16 +631,16 @@ export class CheatingDaddyApp extends LitElement {
             if (!creds.commandCodeApiKey || creds.commandCodeApiKey.trim() === '') {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
+                    mainView.triggerApiKeyError('Command Code API key is required.');
                 }
                 return;
             }
 
-            const success = await cheatingDaddy.initializeCommandCode(this.selectedProfile);
-            if (!success) {
+            const result = await cheatingDaddy.initializeCommandCode(this.selectedProfile);
+            if (!result.success) {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
+                    mainView.triggerApiKeyError(result.error);
                 }
                 return;
             }
@@ -651,16 +651,16 @@ export class CheatingDaddyApp extends LitElement {
             if (!baseUrl.trim() || !model.trim()) {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
+                    mainView.triggerApiKeyError(!baseUrl.trim() ? 'Base URL is required.' : 'Model is required.');
                 }
                 return;
             }
 
-            const success = await cheatingDaddy.initializeOpenAi(this.selectedProfile);
-            if (!success) {
+            const result = await cheatingDaddy.initializeOpenAi(this.selectedProfile);
+            if (!result.success) {
                 const mainView = this.shadowRoot.querySelector('main-view');
                 if (mainView && mainView.triggerApiKeyError) {
-                    mainView.triggerApiKeyError();
+                    mainView.triggerApiKeyError(result.error);
                 }
                 return;
             }

@@ -177,13 +177,13 @@ async function initializeCommandCode(profile = 'interview') {
     const whisperModel = prefs.whisperModel || 'tiny.en';
     const customPrompt = prefs.customPrompt || '';
 
-    const success = await ipcRenderer.invoke('initialize-commandcode', commandCodeApiKey, commandCodeModel, whisperModel, profile, customPrompt);
-    if (success) {
+    const result = await ipcRenderer.invoke('initialize-commandcode', commandCodeApiKey, commandCodeModel, whisperModel, profile, customPrompt);
+    if (result.success) {
         cheatingDaddy.setStatus('Command Code Live');
-        return true;
+        return { success: true };
     } else {
         cheatingDaddy.setStatus('error');
-        return false;
+        return { success: false, error: result.error || '' };
     }
 }
 
@@ -196,13 +196,13 @@ async function initializeOpenAi(profile = 'interview') {
     const whisperModel = prefs.whisperModel || 'tiny.en';
     const customPrompt = prefs.customPrompt || '';
 
-    const success = await ipcRenderer.invoke('initialize-openai', baseUrl, apiKey, model, whisperModel, profile, customPrompt);
-    if (success) {
+    const result = await ipcRenderer.invoke('initialize-openai', baseUrl, apiKey, model, whisperModel, profile, customPrompt);
+    if (result.success) {
         cheatingDaddy.setStatus('OpenAI API Live');
-        return true;
+        return { success: true };
     } else {
         cheatingDaddy.setStatus('error');
-        return false;
+        return { success: false, error: result.error || '' };
     }
 }
 

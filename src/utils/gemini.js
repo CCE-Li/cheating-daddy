@@ -1114,20 +1114,20 @@ function setupGeminiIpcHandlers(geminiSessionRef) {
 
     ipcMain.handle('initialize-commandcode', async (event, commandCodeApiKey, model, whisperModel, profile, customPrompt) => {
         currentProviderMode = 'commandcode';
-        const success = await getLocalAi().initializeCommandCodeSession(commandCodeApiKey, model, whisperModel, profile, customPrompt);
-        if (!success) {
+        const result = await getLocalAi().initializeCommandCodeSession(commandCodeApiKey, model, whisperModel, profile, customPrompt);
+        if (!result.success) {
             currentProviderMode = 'byok';
         }
-        return success;
+        return result;
     });
 
     ipcMain.handle('initialize-openai', async (event, baseUrl, apiKey, model, whisperModel, profile, customPrompt) => {
         currentProviderMode = 'openai';
-        const success = await getLocalAi().initializeOpenAiSession(baseUrl, apiKey, model, whisperModel, profile, customPrompt);
-        if (!success) {
+        const result = await getLocalAi().initializeOpenAiSession(baseUrl, apiKey, model, whisperModel, profile, customPrompt);
+        if (!result.success) {
             currentProviderMode = 'byok';
         }
-        return success;
+        return result;
     });
 
     ipcMain.handle('list-models', async (event, provider) => {

@@ -329,6 +329,18 @@ export class MainView extends LitElement {
             color: var(--danger, #ef4444);
         }
 
+        .start-error {
+            margin-top: var(--space-sm);
+            padding: 8px 10px;
+            border: 1px solid var(--danger, #ef4444);
+            border-radius: var(--radius-sm);
+            background: rgba(239, 68, 68, 0.08);
+            color: var(--danger, #ef4444);
+            font-size: var(--font-size-xs);
+            line-height: var(--line-height);
+            overflow-wrap: anywhere;
+        }
+
         .form-hint {
             font-size: var(--font-size-xs);
             color: var(--text-muted);
@@ -769,6 +781,7 @@ export class MainView extends LitElement {
         _availableModels: { state: true },
         _modelsFetching: { state: true },
         _modelsError: { state: true },
+        _initError: { state: true },
     };
 
     constructor() {
@@ -805,6 +818,7 @@ export class MainView extends LitElement {
         this._availableModels = [];
         this._modelsFetching = false;
         this._modelsError = '';
+        this._initError = '';
         this._modelRequestId = 0;
 
         this._animId = null;
@@ -1001,6 +1015,7 @@ export class MainView extends LitElement {
         this._availableModels = [];
         this._modelsFetching = false;
         this._modelsError = '';
+        this._initError = '';
         await cheatingDaddy.storage.updatePreference('providerMode', mode);
         this.requestUpdate();
         this._maybeAutoFetchModels();
@@ -1215,22 +1230,26 @@ export class MainView extends LitElement {
         } else if (this._mode === 'commandcode') {
             if (!this._commandCodeKey.trim()) {
                 this._keyError = true;
+                this._initError = 'Command Code API key is required.';
                 this.requestUpdate();
                 return;
             }
         } else if (this._mode === 'openai') {
             if (!this._openaiBaseUrl.trim() || !this._openaiModel.trim()) {
                 this._keyError = true;
+                this._initError = !this._openaiBaseUrl.trim() ? 'Base URL is required.' : 'Model is required.';
                 this.requestUpdate();
                 return;
             }
         }
 
+        this._initError = '';
         this.onStart();
     }
 
-    triggerApiKeyError() {
+    triggerApiKeyError(message) {
         this._keyError = this._mode !== 'local';
+        this._initError = message || '';
         this.requestUpdate();
         setTimeout(() => {
             this._tokenError = false;
@@ -1322,6 +1341,11 @@ export class MainView extends LitElement {
                     : ''
             }
         `;
+    }
+
+    _renderInitError() {
+        if (!this._initError) return '';
+        return html`<div class="start-error" role="alert">${this._initError}</div>`;
     }
 
     _renderDivider() {
@@ -1586,7 +1610,7 @@ export class MainView extends LitElement {
 
             ${this._renderWhisperSection()}
 
-            ${this._renderStartButton()} ${this._renderDivider()}
+            ${this._renderStartButton()} ${this._renderInitError()} ${this._renderDivider()}
 
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
@@ -1669,7 +1693,7 @@ export class MainView extends LitElement {
 
             ${this._renderWhisperSection()}
 
-            ${this._renderStartButton()} ${this._renderDivider()}
+            ${this._renderStartButton()} ${this._renderInitError()} ${this._renderDivider()}
 
             <div class="mode-links">
                 <button class="mode-link" @click=${() => this._saveMode('byok')}>Use own API keys</button>
